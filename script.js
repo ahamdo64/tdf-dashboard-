@@ -1,4 +1,4 @@
-﻿// ============ المتغيرات العامة ============
+// ============ المتغيرات العامة ============
 let allData = null;
 let gcData = [];
 let stagesData = [];
@@ -16,15 +16,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============ تحميل البيانات ============
 async function loadData() {
     try {
-        // تحميل ملف JSON الرئيسي
         const response = await fetch('data/tdf_all_data.json');
         allData = await response.json();
         
         gcData = allData.general_classification || [];
         stagesData = allData.stages_info || [];
-        stage1Data = allData.stage_1_ranking || [];
         
-        // تحديث الواجهة
+        // 🔧 تصحيح بيانات المرحلة الأولى
+        stage1Data = (allData.stage_1_ranking || []).map(rider => ({
+            stage: rider.stage,
+            rank: rider.rank,
+            rider: rider.rider,
+            rider_no: rider.team,      // team يحتوي على الرقم
+            team: rider.time,          // time يحتوي على اسم الفريق
+            time: '-'                  // لا يوجد زمن فعلي
+        }));
+        
         updateOverview();
         updateGC();
         updateStages();
@@ -43,24 +50,20 @@ function updateOverview() {
     
     const winner = gcData[0];
     
-    // تحديث بطاقات الإحصائيات
-    document.getElementById('winner-name').textContent = winner.rider;
-    document.getElementById('winner-team').textContent = winner.team;
+    document.getElementById('winner-name').textContent = winner.rider.trim();
+    document.getElementById('winner-team').textContent = winner.team.trim();
     document.getElementById('total-riders').textContent = gcData.length;
     document.getElementById('total-stages').textContent = stagesData.length;
-    document.getElementById('winner-time').textContent = winner.time;
+    document.getElementById('winner-time').textContent = winner.time.trim();
     document.getElementById('winner-gap').textContent = 'الزمن الإجمالي';
     
-    // تحديث القمصان
     updateJerseys();
-    
-    // تحديث Timeline
     updateTimeline();
 }
 
 function updateJerseys() {
     const container = document.getElementById('jerseys-container');
-    if (!container || gcData.length < 4) return;
+    if (!container) return;
     
     const jerseys = [
         { 
@@ -68,7 +71,7 @@ function updateJerseys() {
             icon: 'fa-medal', 
             title: 'القميص الأصفر', 
             subtitle: 'الترتيب العام',
-            rider: gcData[0]?.rider || '-'
+            rider: gcData[0]?.rider?.trim() || '-'
         },
         { 
             class: 'green', 
@@ -108,24 +111,24 @@ function updateTimeline() {
     if (!container) return;
     
     container.innerHTML = stagesData.map(stage => {
-        const dateMatch = stage.text.match(/(\d{2}\/\d{2})/);
+        const text = stage.text || '';
+        const dateMatch = text.match(/(\d{2}\/\d{2})/);
         const date = dateMatch ? dateMatch[1] : '';
         
         return `
             <div class="stage-item" onclick="showStageDetails(${stage.stage_number})">
                 <div class="stage-number">S${stage.stage_number}</div>
                 <div class="stage-date">${date}</div>
-                <div class="stage-route">${extractRoute(stage.text)}</div>
+                <div class="stage-route">${extractRoute(text)}</div>
             </div>
         `;
     }).join('');
 }
 
 function extractRoute(text) {
-    // استخراج المسار من النص
     const parts = text.split('\n')[0].split('|');
     if (parts.length > 1) {
-        const route = parts[1].replace(/\d{2}\/\d{2}/, '').trim();
+        const route = parts[1].replace(/\d{2}\/\d{2}/, '').replace(/Find out more/g, '').trim();
         return route.length > 20 ? route.substring(0, 20) + '...' : route;
     }
     return '';
@@ -142,9 +145,9 @@ function createGapChart() {
     if (!ctx) return;
     
     const top10 = gcData.slice(0, 10);
-    const labels = top10.map(r => r.rider);
+    const labels = top10.map(r => r.rider.trim());
     const gaps = top10.map(r => {
-        if (r.gap === '-') return 0;
+        if (!r.gap || r.gap.trim() === '-') return 0;
         return parseTimeToSeconds(r.gap);
     });
     
@@ -197,7 +200,8 @@ function createTeamsChart() {
     const teamsCount = {};
     
     top10.forEach(r => {
-        teamsCount[r.team] = (teamsCount[r.team] || 0) + 1;
+        const team = r.team.trim();
+        teamsCount[team] = (teamsCount[team] || 0) + 1;
     });
     
     const labels = Object.keys(teamsCount);
@@ -218,7 +222,7 @@ function createTeamsChart() {
                 data: data,
                 backgroundColor: colors,
                 borderWidth: 2,
-                borderColor: '#fff'
+                borderColor: getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || '#fff'
             }]
         },
         options: {
@@ -241,7 +245,7 @@ function updateGC() {
     const tbody = document.getElementById('gc-tbody');
     if (!tbody) return;
     
-    tbody.innerHTML = gcData.map((rider, index) => {
+    tbody.innerHTML = gcData.map((rider) => {
         const rank = parseInt(rider.rank);
         let rowClass = '';
         let rankClass = '';
@@ -252,17 +256,16 @@ function updateGC() {
         
         return `
             <tr class="${rowClass}" data-rider="${rider.rider.toLowerCase()}" data-team="${rider.team.toLowerCase()}">
-                <td><span class="rank-badge ${rankClass}">${rank}</span></span></td>
-                <td><strong>${rider.rider}</strong></td>
-                <td>${rider.rider_no}</td>
-                <td>${rider.team}</td>
-                <td>${rider.time}</td>
-                <td>${rider.gap}</td>
+                <td><span class="rank-badge ${rankClass}">${rank}</span></td>
+                <td><strong>${rider.rider.trim()}</strong></td>
+                <td>${rider.rider_no.trim()}</td>
+                <td>${rider.team.trim()}</td>
+                <td>${rider.time.trim()}</td>
+                <td>${rider.gap.trim()}</td>
             </tr>
         `;
     }).join('');
     
-    // إضافة مستمعي الأحداث للبحث والفرز
     document.getElementById('gc-search').addEventListener('input', filterGC);
     document.getElementById('gc-sort').addEventListener('change', sortGC);
     document.getElementById('export-gc').addEventListener('click', exportGC);
@@ -337,9 +340,10 @@ function updateStages() {
     if (!grid) return;
     
     grid.innerHTML = stagesData.map(stage => {
-        const dateMatch = stage.text.match(/(\d{2}\/\d{2})/);
+        const text = stage.text || '';
+        const dateMatch = text.match(/(\d{2}\/\d{2})/);
         const date = dateMatch ? dateMatch[1] : '';
-        const route = extractFullRoute(stage.text);
+        const route = extractFullRoute(text);
         
         return `
             <div class="stage-card">
@@ -361,7 +365,7 @@ function updateStages() {
 function extractFullRoute(text) {
     const parts = text.split('|');
     if (parts.length > 1) {
-        return parts[1].replace(/\d{2}\/\d{2}/, '').trim();
+        return parts[1].replace(/\d{2}\/\d{2}/, '').replace(/Find out more/g, '').trim();
     }
     return text;
 }
@@ -371,8 +375,12 @@ function updateStageResults() {
     const select = document.getElementById('stage-select');
     if (!select) return;
     
-    // إضافة خيار للمرحلة الأولى
-    select.innerHTML = '<option value="1">المرحلة 1</option>';
+    // إنشاء قائمة المراحل
+    let options = '';
+    for (let i = 1; i <= stagesData.length; i++) {
+        options += `<option value="${i}">المرحلة ${i}</option>`;
+    }
+    select.innerHTML = options;
     
     select.addEventListener('change', (e) => {
         displayStageResults(parseInt(e.target.value));
@@ -398,9 +406,9 @@ function displayStageResults(stageNumber) {
             return `
                 <tr>
                     <td><span class="rank-badge ${rankClass}">${rank}</span></td>
-                    <td><strong>${rider.rider}</strong></td>
-                    <td>${rider.team}</td>
-                    <td>${rider.time}</td>
+                    <td><strong>${rider.rider.trim()}</strong></td>
+                    <td>${rider.team.trim()}</td>
+                    <td>-</td>
                 </tr>
             `;
         }).join('');
@@ -424,18 +432,14 @@ function initializeNavigation() {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             
-            // إزالة active من جميع الروابط
             navLinks.forEach(l => l.classList.remove('active'));
             link.classList.add('active');
             
-            // إخفاء جميع الأقسام
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             
-            // إظهار القسم المطلوب
             const sectionId = link.dataset.section;
             document.getElementById(sectionId).classList.add('active');
             
-            // التمرير للأعلى
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
     });
@@ -507,7 +511,6 @@ function formatSeconds(seconds) {
 }
 
 function showStageDetails(stageNumber) {
-    // التنقل إلى قسم نتائج المراحل
     document.querySelector('[data-section="stage-results"]').click();
     document.getElementById('stage-select').value = stageNumber;
     displayStageResults(stageNumber);
